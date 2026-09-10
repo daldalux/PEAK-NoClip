@@ -12,7 +12,7 @@ namespace PeakCheat
         public static Vector3 FlyDirection = Vector3.zero;
         public static CharacterMovement LocalPlayer = null;
 
-        // Конфиг для сохранения скорости
+
         public static ConfigEntry<float> FlySpeed;
 
         private void Awake()
@@ -58,20 +58,20 @@ namespace PeakCheat
                 }
             }
 
-            // Динамическое изменение скорости во время игры
+
             if (IsFlyMode)
             {
-                // Проверяем как обычные клавиши Плюс/Равно, так и Плюс на Numpad
+
                 if (Input.GetKeyDown(KeyCode.Equals) || Input.GetKeyDown(KeyCode.KeypadPlus))
                 {
                     FlySpeed.Value += 5f;
                     Debug.Log($"[PEAK ЧИТ] Скорость полета увеличена: {FlySpeed.Value}");
                 }
 
-                // Проверяем обычный Минус и Минус на Numpad
+
                 if (Input.GetKeyDown(KeyCode.Minus) || Input.GetKeyDown(KeyCode.KeypadMinus))
                 {
-                    // Не даем скорости опуститься ниже 5
+
                     FlySpeed.Value = Mathf.Max(5f, FlySpeed.Value - 5f);
                     Debug.Log($"[PEAK ЧИТ] Скорость полета уменьшена: {FlySpeed.Value}");
                 }
@@ -85,51 +85,73 @@ namespace PeakCheat
         [HarmonyPrefix]
         static bool Prefix(CharacterMovement __instance)
         {
+            if (__instance == null) return true;
+
+
+            if (!Application.isFocused)
+            {
+                Plugin.FlyDirection = Vector3.zero;
+                return true;
+            }
+
             var characterField = AccessTools.Field(typeof(CharacterMovement), "character");
             if (characterField == null) return true;
 
             Character player = characterField.GetValue(__instance) as Character;
 
-            if (player != null && player == Character.localCharacter)
+            if (player != null && Character.localCharacter != null && player == Character.localCharacter)
             {
                 Plugin.LocalPlayer = __instance;
 
                 if (Plugin.IsFlyMode)
                 {
+
                     var dataField = AccessTools.Field(typeof(Character), "data");
                     if (dataField != null)
                     {
                         var dataObj = dataField.GetValue(player);
                         if (dataObj != null)
                         {
-                            AccessTools.Field(dataObj.GetType(), "sinceGrounded").SetValue(dataObj, 0f);
+                            var sinceGroundedField = AccessTools.Field(dataObj.GetType(), "sinceGrounded");
+                            if (sinceGroundedField != null)
+                            {
+                                sinceGroundedField.SetValue(dataObj, 0f);
+                            }
                         }
                     }
 
                     Camera mainCam = Camera.main;
-                    if (mainCam == null) return true;
+                    if (mainCam == null || mainCam.transform == null)
+                    {
+                        Plugin.FlyDirection = Vector3.zero;
+                        return true;
+                    }
 
                     Vector3 moveDir = Vector3.zero;
+                    bool hasInput = false;
 
 
                     Vector3 camForward = Vector3.Scale(mainCam.transform.forward, new Vector3(1, 0, 1)).normalized;
                     Vector3 camRight = Vector3.Scale(mainCam.transform.right, new Vector3(1, 0, 1)).normalized;
 
-                    if (Input.GetKey(KeyCode.W)) moveDir += camForward;
-                    if (Input.GetKey(KeyCode.S)) moveDir -= camForward;
-                    if (Input.GetKey(KeyCode.D)) moveDir += camRight;
-                    if (Input.GetKey(KeyCode.A)) moveDir -= camRight;
 
-                    if (Input.GetKey(KeyCode.Space))
-                    {
-                        moveDir += Vector3.up;
-                    }
-                    if (Input.GetKey(KeyCode.LeftControl))
-                    {
-                        moveDir -= Vector3.up;
-                    }
+                    if (Input.GetKey(KeyCode.W)) { moveDir += camForward; hasInput = true; }
+                    if (Input.GetKey(KeyCode.S)) { moveDir -= camForward; hasInput = true; }
+                    if (Input.GetKey(KeyCode.D)) { moveDir += camRight; hasInput = true; }
+                    if (Input.GetKey(KeyCode.A)) { moveDir -= camRight; hasInput = true; }
 
-                    Plugin.FlyDirection = moveDir.normalized;
+
+                    if (Input.GetKey(KeyCode.Space)) { moveDir += Vector3.up; hasInput = true; }
+                    if (Input.GetKey(KeyCode.LeftControl)) { moveDir -= Vector3.up; hasInput = true; }
+
+                    if (hasInput)
+                    {
+                        Plugin.FlyDirection = moveDir.normalized;
+                    }
+                    else
+                    {
+                        Plugin.FlyDirection = Vector3.zero;
+                    }
                 }
             }
             return true;
@@ -142,8 +164,10 @@ namespace PeakCheat
         [HarmonyPrefix]
         static bool Prefix(CharacterMovement __instance)
         {
-            if (Plugin.IsFlyMode && __instance == Plugin.LocalPlayer)
+
+            if (Plugin.IsFlyMode && Application.isFocused && __instance != null && __instance == Plugin.LocalPlayer)
             {
+
                 var rb = __instance.GetComponent<Rigidbody>();
                 if (rb == null) rb = __instance.GetComponentInChildren<Rigidbody>();
 
@@ -158,4 +182,5 @@ namespace PeakCheat
             return true;
         }
     }
+
 }
